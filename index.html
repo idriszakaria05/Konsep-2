@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="id"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Supply Fuse – Plate Bergerak</title>
+<style>
+:root{--bg:#f6f7f8;--fg:#1b1f24;--mut:#5b636b;--card:#fff;--bd:#d5d9dd;--ac:#1f5fbf;--acbg:#e3edfb;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1c1d1f;--fg:#ecedee;--mut:#a3a9af;--card:#26282b;--bd:#3a3d41;--ac:#8db7ff;--acbg:#2a3b57}}
+:root[data-theme="dark"]{--bg:#1c1d1f;--fg:#ecedee;--mut:#a3a9af;--card:#26282b;--bd:#3a3d41;--ac:#8db7ff;--acbg:#2a3b57}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;padding:14px;background:var(--bg);color:var(--fg);font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+h1{font-size:17px;margin:0 0 8px}
+.w{position:relative}
+canvas{width:100%;height:min(560px,68vh);display:block;touch-action:none;cursor:grab}
+#info{position:absolute;left:6px;top:4px;font-size:13px;color:var(--mut);pointer-events:none}
+#stat{position:absolute;right:6px;top:4px;font-size:13px;color:var(--mut);pointer-events:none;text-align:right;max-width:60%}
+.bar{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+button{font:inherit;font-size:13px;padding:6px 12px;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--fg);cursor:pointer}
+button.on{background:var(--acbg);color:var(--ac);border-color:var(--ac)}
+.g{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px}
+.c{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:10px 14px}
+.c h2{font-size:14px;margin:0 0 4px}.c ul{margin:0;padding-left:18px;color:var(--mut)}
+</style></head><body>
+<h1>Supply fuse ke plate – plate bergerak, nozzle tetap</h1>
+<div class="w"><canvas id="c3"></canvas><div id="info"></div><div id="stat"></div></div>
+<div class="bar">
+<button class="on" id="bA">Animasi</button><button id="bS">Kecepatan x1</button><button id="bR">Putar otomatis</button>
+<button id="bI">Isometrik</button><button id="bT">Atas</button><button id="bN">Nozzle tetap</button><button id="bP">Plate</button><button id="bO">Operator</button><button id="bM">Mode: Otomatis</button><button id="bPv">◀ Slot</button><button id="bNx">Slot ▶</button><input type="range" id="aT" min="0" max="100" step="0.05" value="0" style="flex:1;min-width:140px">
+</div>
+<div class="c" id="man" style="display:none;margin-bottom:10px"><h2>Kontrol manual (jog)</h2>
+<div class="bar"><label>Nozzle <select id="mK"><option value="0">F1 Micro2</option><option value="1">F2 Micro3</option><option value="2">F3 Low-profile mini</option><option value="3">F4 Mini</option><option value="4">F5 Standard</option><option value="5">F6 Maxi</option></select></label>
+<button id="mG">Gripper: buka</button><button id="mR">Putar 180°</button><button id="mS">Shutter: tutup</button><button id="mA">Sejajar slot kosong</button><button id="mReset">Reset plate</button></div>
+<div class="bar"><label>Plate Z <input type="range" id="mZ" min="-60" max="60" step="0.5" value="-31.5"></label><label>Plate X <input type="range" id="mX" min="-75" max="-20" step="0.5" value="-60"></label><label>Tinggi nozzle <input type="range" id="mH" min="12.7" max="42" step="0.1" value="42"></label></div>
+<div id="mM" style="color:var(--mut)"></div></div>
+<div class="g">
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+var cv=document.getElementById('c3'),info=document.getElementById('info'),stat=document.getElementById('stat'),DEF='Seret untuk memutar, scroll untuk zoom';
+info.textContent=DEF;
+var R=new THREE.WebGLRenderer({canvas:cv,antialias:true,alpha:true});
+R.setPixelRatio(Math.min(window.devicePixelRatio||1,2));R.shadowMap.enabled=true;
+var S=new THREE.Scene(),cam=new THREE.PerspectiveCamera(35,1,5,2500);
+S.add(new THREE.HemisphereLight(0xffffff,0x9a9fa5,.95));
+var dl=new THREE.DirectionalLight(0xffffff,.8);dl.position.set(150,300,200);dl.castShadow=true;
+dl.shadow.mapSize.set(2048,2048);var sc=dl.shadow.camera;sc.left=-220;sc.right=220;sc.top=220;sc.bottom=-220;sc.near=40;sc.far=900;S.add(dl);
+var edge=new THREE.LineBasicMaterial({color:0x1b1f24,transparent:true,opacity:.25}),mats={},P=[];
+function mat(c,k){var key=c+k;if(!mats[key])mats[key]=new THREE.MeshPhongMaterial({color:c,specular:k==='m'?0x808080:0x262626,shininess:k==='m'?75:22});return mats[key];}
+function B(w,h,d,c,k,x,y,z,lb,par,ed){var m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat(c,k));m.position.set(x,y,z);m.castShadow=m.receiveShadow=true;
+if(ed!==false)m.add(new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry),edge));if(lb){m.userData.label=lb;P.push(m);}(par||S).add(m);return m;}
+function C(r,h,c,k,x,y,z,lb,par){var m=new THREE.Mesh(new THREE.CylinderGeometry(r,r,h,28),mat(c,k));m.position.set(x,y,z);m.castShadow=true;if(lb){m.userData.label=lb;P.push(m);}(par||S).add(m);return m;}
+var ALU=0xC9CDD2,DK=0x3A3F45,DK2=0x2F343A,STEEL=0xD7DADE,BLUE=0x1F5FBF,ORG=0xE8742A,PAN=0xE6E8EA,GR=0x4A5560;
+var TY=28,PY=9.6,ENDX=-45,BX=-98,RM=5.15,dy=TY-14.4,HOMEY=42,YL=36,PICKY=28.6,PLY=12.7,NP=2,D=1.9,W=12*D,CYC=4+W+1.5+2.5,PK=6.4;
+var gp=new THREE.Mesh(new THREE.PlaneGeometry(900,600),new THREE.ShadowMaterial({opacity:.22}));gp.rotation.x=-Math.PI/2;gp.position.y=-47;gp.receiveShadow=true;S.add(gp);
+B(240,3,140,0xD4D8DC,'m',-10,-1.5,0,'Meja mesin');B(230,40,130,PAN,'p',-10,-23,0,'Kabinet mesin');
+B(26,68,26,0x6B7480,'p',-128,-13,-20,'Kabinet PLC Mitsubishi + driver servo');
+var T=[{n:'Micro2',s:[2,3.4,.85],c:0xE5484D},{n:'Micro3',s:[3.2,4,.85],c:0xF5C542},{n:'Low-profile mini',s:[2.4,1.9,.85],c:0x3E8EDE},{n:'Mini',s:[2.4,3.6,.85],c:0x4CAF50},{n:'Standard',s:[4.2,4.1,1.15],c:0xB28DFF},{n:'Maxi',s:[6.4,7.6,1.9],c:0xFF9F43}];
+var bm=T.map(function(t){return new THREE.MeshPhongMaterial({color:t.c,specular:0x444444,shininess:60});}),bladeM=mat(0xD8DADD,'m'),markM=new THREE.MeshBasicMaterial({color:0xffffff});
+function mk(i,sg,lb){var t=T[i],w=t.s[0],h=t.s[1],d=t.s[2],g=new THREE.Group();
+var b=new THREE.Mesh(new THREE.BoxGeometry(w,h*.62,d),bm[i]);b.position.y=h*.69;b.castShadow=true;if(lb){b.userData.label=lb;P.push(b);}
+var bl=h*.4,k1=new THREE.Mesh(new THREE.BoxGeometry(w*.2,bl,d*.4),bladeM);k1.position.set(-w*.27,bl/2,0);var k2=k1.clone();k2.position.x=w*.27;
+var m=new THREE.Mesh(new THREE.BoxGeometry(w*.55,h*.2,.12),markM);m.position.set(0,h*.69,sg*(d/2+.05));
+g.add(b);g.add(k1);g.add(k2);g.add(m);g.userData.m=m;g.userData.d=d;return g;}
+function setMk(g,sg){g.userData.m.position.z=sg*(g.userData.d/2+.05);}
+var tz=[],pX=[],lx=[],tw=0,acc;
+T.forEach(function(t,k){tz[k]=-37.5+15*k;pX[k]=ENDX-.1-t.s[0]/2;tw+=t.s[0]+2.4;});tw-=1.2;acc=-tw/2;
+T.forEach(function(t,k){var sw=t.s[0]+1.2;lx[k]=acc+sw/2;acc+=sw+1.2;});
+var tg=[];for(var s0=0;s0<12;s0++){var k0=s0<6?s0:11-s0,lz0=s0<6?-6:6;tg.push({x:pX[k0]-lx[k0],z:tz[k0]-lz0,k:k0,r:s0<6?0:1});}
+function rev(s){return s%4===2;}
+var bowlM=new THREE.MeshPhongMaterial({color:0xC4C9CF,specular:0x909090,shininess:85,side:THREE.DoubleSide});
+var tq=[],shut=[],nz=[],rot=[],held=[],lamp=[];
+function feeder(k){var t=T[k],z=tz[k],lb='Bowl feeder F'+(k+1)+' – '+t.n,g=new THREE.Group();g.position.set(BX,dy,z+RM);S.add(g);
+C(5.6,6,DK,'m',0,3,0,lb,g);C(6.9,3.4,GR,'p',0,7.7,0,lb,g);C(7,.5,0xB8BCC4,'m',0,9.65,0,lb,g);B(10,dy,10,DK2,'m',0,-dy/2,0,'Kolom bowl',g);
+var pts=[[.01,.35],[1.3,.12],[4.9,0],[5.9,.3],[6.4,1.4],[6.5,6]].map(function(p){return new THREE.Vector2(p[0],p[1]);});
+var bw=new THREE.Mesh(new THREE.LatheGeometry(pts,40),bowlM);bw.position.y=9.9;bw.castShadow=true;bw.userData.label=lb;P.push(bw);g.add(bw);
+var L=ENDX-7-BX,cx=(BX+ENDX-7)/2;
+B(L,.8,2.4,0xBFC4CA,'m',cx,TY,z,'Linear track F'+(k+1));B(L,1.6,.35,0xBFC4CA,'m',cx,TY+1.2,z-1.1,null,null,false);B(L,1.6,.35,0xBFC4CA,'m',cx,TY+1.2,z+1.1,null,null,false);
+var hl=ENDX-10-(BX+7);B(hl,2.4,3.6,DK,'p',BX+7+hl/2,TY-1.6,z,'Linear feeder drive F'+(k+1));
+shut[k]=B(7,.8,2.4,ORG,'p',ENDX-3.5,TY,z,'Shutter ujung track (escapement)');
+B(3,3,3,BLUE,'p',pX[k],TY+4,z-6,'Sensor orientasi cetakan F'+(k+1));
+var lm=new THREE.MeshPhongMaterial({color:0x888888,emissive:0x222222});lamp[k]=lm;var le=new THREE.Mesh(new THREE.BoxGeometry(1.6,1.6,1.6),lm);le.position.set(pX[k],TY+6.4,z-6);le.userData.label='Lampu sensor orientasi';P.push(le);S.add(le);
+tq[k]=[];for(var q=0;q<5;q++){var f=mk(k,(k+q)%2?1:-1,'Fuse '+t.n+' (antrian di track)');f.position.set(pX[k]-q*(t.s[0]+.6),TY+.4,z);S.add(f);tq[k].push(f);}
+B(8,3,8,ALU,'m',pX[k],71.5,z,null,null,false);B(6,24,6,BLUE,'p',pX[k],64,z,'Silinder pneumatik Z (nozzle tetap) F'+(k+1));
+var n=new THREE.Group();n.position.set(pX[k],HOMEY,z);S.add(n);nz[k]=n;
+B(2,36,2,STEEL,'m',0,22,0,'Batang silinder nozzle',n);
+var r=new THREE.Group();r.position.y=8;n.add(r);rot[k]=r;
+C(2.6,3,DK2,'m',0,0,0,'Rotary pneumatik 180° F'+(k+1),r);B(9,3.6,5.5,BLUE,'p',0,-3,0,'Gripper nozzle F'+(k+1),r);
+B(3.6,4.2,.7,STEEL,'m',0,-5.5,1.45,null,r,false);B(3.6,4.2,.7,STEEL,'m',0,-5.5,-1.45,null,r,false);
+var h=mk(k,1,'Fuse dibawa nozzle');h.position.y=-8;h.visible=false;r.add(h);held[k]=h;}
+for(var kk=0;kk<6;kk++)feeder(kk);
+B(5,5,136,ALU,'m',-47,74,0,'Rangka atas nozzle');[-66,66].forEach(function(z){B(5,74,5,ALU,'m',-47,37,z,'Tiang rangka');});
+[-84,-4].forEach(function(x){B(3,2,112,0x4B525A,'m',x,1,0,'Rel sumbu Z plate');});
+B(7,7,7,DK2,'m',-84,3.5,60,'Servo sumbu Z (plate)');
+var zb=new THREE.Group();S.add(zb);B(86,3,7,ALU,'m',-44,4.7,0,'Beam sumbu X (bergerak sumbu Z)',zb);B(7,6,7,DK2,'m',-1.5,6,0,'Servo sumbu X (plate)',zb);
+var sl=B(16,1.6,12,DK,'m',0,7,0,'Slider sumbu X'),ne=B(30,1.8,20,STEEL,'m',0,8.7,0,'Nest plate');
+B(112,3,28,0xF0B94D,'m',58,8.1,50,'Jalur masuk: plate kosong dari luar');B(112,3,28,0x7FD39B,'m',58,8.1,-50,'Jalur keluar: plate terisi ke verifikasi');
+B(3,60,3,DK,'m',40,30,-68,null,null,false);B(3,3,18,DK,'m',40,58,-60,null,null,false);B(5,6,5,0x1B1F24,'p',40,52,-52,'Kamera verifikasi akhir (12 slot)');
+var OZ=-88,RX=132,PXs=100;
+[[-16,-24],[16,-24],[-16,24],[16,24]].forEach(function(p){B(2,59,2,DK,'m',160+p[0],-17.5,-88+p[1],null,null,false);});
+[-2.5,7.5].forEach(function(y){B(34,1,50,0xB8BCC4,'m',160,y,-88,'Troli plate terisi (menuju proses insert ke harness)');});
+var opG=new THREE.Group();opG.scale.set(1.3,1.3,1.3);S.add(opG);
+B(4,36,4,0x2B3A55,'p',-4,18,0,null,opG,false);B(4,36,4,0x2B3A55,'p',4,18,0,null,opG,false);
+B(16,30,9,ORG,'p',0,51,0,'Operator',opG,false);
+var hd=new THREE.Mesh(new THREE.SphereGeometry(6.5,16,12),mat(0xE8C39E,'p'));hd.position.y=73;hd.userData.label='Operator (ambil dan letakkan plate terpakai)';P.push(hd);opG.add(hd);
+var arms=[-1,1].map(function(sd){var a=new THREE.Group();a.position.set(sd*9.5,62,0);a.rotation.order='YXZ';opG.add(a);B(3.5,3.5,34,ORG,'p',0,0,17,null,a,false);B(4.5,4.5,4.5,0xE8C39E,'p',0,0,34,null,a,false);return a;});
+var PL=[];
+for(var j=0;j<NP;j++){var g=new THREE.Group();g.visible=false;S.add(g);B(44,3,24,0x2A2D31,'p',0,1.5,0,'Fuse plate #'+(j+1),g);var fz=[];
+for(var s=0;s<12;s++){var k=tg[s].k,lz=tg[s].r?6:-6;B(T[k].s[0]+1.2,.1,2.6,0x0B0C0E,'p',lx[k],3.05,lz,null,g,false);
+var f=mk(k,1,'Fuse '+T[k].n+' (terpasang)');f.position.set(lx[k],3.1,lz);f.visible=false;g.add(f);fz.push(f);}
+PL.push({g:g,f:fz});}
+function ease(u){return u*u*(3-2*u);}function cl(v){return v<0?0:v>1?1:v;}function lp(a,b,e){return a+(b-a)*e;}
+function nzY(u){if(u<.25)return lp(HOMEY,PICKY,ease(u/.25));if(u<.35)return PICKY;if(u<.55)return lp(PICKY,YL,ease((u-.35)/.2));if(u<.7)return YL;if(u<1.1)return lp(YL,PLY,ease((u-.7)/.4));if(u<1.3)return PLY;if(u<1.7)return lp(PLY,HOMEY,ease((u-1.3)/.4));return HOMEY;}
+function shF(u){if(u<.35)return 0;if(u<.55)return ease((u-.35)/.2);if(u<1.6)return 1;return 1-ease((u-1.6)/.3);}
+var H=Math.PI/2;
+function opS(o){var s={x:RX,r:H,p:1.4,w:0,t:'standby'};if(o<0||o>=PK)return s;
+if(o<.4){s.r=lp(H,-H,ease(o/.4));s.t='berbalik ke jalur keluar';}
+else if(o<1.6){s.r=-H;s.x=lp(RX,PXs,ease((o-.4)/1.2));s.w=1;s.t='jalan ke ujung jalur keluar';}
+else if(o<2){s.x=PXs;s.r=lp(-H,0,ease((o-1.6)/.4));s.t='menghadap plate';}
+else if(o<2.8){s.x=PXs;s.r=0;s.p=lp(1.4,.5,ease((o-2)/.8));s.t='meraih plate terisi';}
+else if(o<3.2){s.x=PXs;s.r=0;s.p=lp(.5,.8,ease((o-2.8)/.4));s.t='mengangkat plate';}
+else if(o<3.6){s.x=PXs;s.r=lp(0,H,ease((o-3.2)/.4));s.p=.8;s.t='berbalik ke troli';}
+else if(o<5){s.r=H;s.x=lp(PXs,RX,ease((o-3.6)/1.4));s.p=.8;s.w=1;s.t='membawa plate ke troli';}
+else if(o<5.8){s.r=H;s.p=lp(.8,.9,ease((o-5)/.8));s.t='meletakkan plate di troli';}
+else{s.r=H;s.p=lp(.9,1.4,ease((o-5.8)/.6));s.t='kembali standby';}
+return s;}
+function opPlate(o,j){var s=opS(o),top=j%2?8:-2;
+if(o<2.8)return{x:100,y:PY,z:-50,r:0};
+if(o<3.2){var e=ease((o-2.8)/.4);return{x:100,y:lp(PY,4,e),z:lp(-50,OZ+28,e),r:0};}
+var fx=s.x+28*Math.sin(s.r),fz=OZ+28*Math.cos(s.r);
+if(o<5)return{x:fx,y:4,z:fz,r:s.r};
+var e2=ease(cl((o-5)/.8));return{x:fx,y:lp(4,top,e2),z:fz,r:H};}
+var HM={x:0,z:50},OT={x:0,z:-50},TEND=NP*CYC+PK,tA=0,on=true,sp=[1,2,4],si=0,lastSig='';
+function apply(t){
+var cx=HM.x,cz=HM.z,wk=null,phase='Menunggu',flips=0,pj=0;
+var os=opS(-1),ot='';
+for(var j=0;j<NP;j++){var a=t-j*CYC,pl=PL[j];pl.g.rotation.y=0;
+if(a>=CYC){pl.g.visible=true;var o=a-CYC,pp=opPlate(o,j);pl.g.position.set(pp.x,pp.y,pp.z);pl.g.rotation.y=pp.r;for(var m=0;m<12;m++)pl.f[m].visible=true;if(o<PK){os=opS(o);ot=os.t;}continue;}
+if(a<0){pl.g.visible=false;continue;}
+pl.g.visible=true;var x,z,cnt=0,att=true;pj=j;
+if(a<2.5){x=100*(1-ease(a/2.5));z=50;att=false;phase='Plate kosong masuk';}
+else if(a<4){var e=ease((a-2.5)/1.5);cx=lp(HM.x,tg[0].x,e);cz=lp(HM.z,tg[0].z,e);phase='Plate bergerak ke nozzle F1';}
+else if(a<4+W){var q=a-4,s=Math.floor(q/D),u=q-s*D,fr=s?tg[s-1]:tg[0],e1=ease(cl(u/.7));cx=lp(fr.x,tg[s].x,e1);cz=lp(fr.z,tg[s].z,e1);cnt=s+(u>=1.2?1:0);wk={s:s,u:u,k:tg[s].k};
+phase='Slot '+(s+1)+'/12 · nozzle F'+(tg[s].k+1)+' · '+(rev(s)?'TERBALIK → putar 180°':'orientasi OK');}
+else if(a<4+W+1.5){var e2=ease((a-4-W)/1.5);cx=lp(tg[11].x,OT.x,e2);cz=lp(tg[11].z,OT.z,e2);cnt=12;phase='Kamera verifikasi 12 slot';}
+else{var e3=ease((a-4-W-1.5)/2.5);cx=lp(OT.x,HM.x,e3);cz=lp(OT.z,HM.z,e3);x=OT.x+100*e3;z=-50;att=false;cnt=12;phase='Plate terisi keluar';}
+if(att){x=cx;z=cz;}pl.g.position.set(x,PY,z);
+for(var m=0;m<12;m++){pl.f[m].visible=m<cnt;if(m<cnt&&rev(m))flips++;}}
+zb.position.z=cz;sl.position.set(cx,7,cz);ne.position.set(cx,8.7,cz);
+opG.position.set(os.x,-47+(os.w?Math.abs(Math.sin(t*12))*1.2:0),OZ);opG.rotation.y=os.r;arms[0].rotation.set(os.p,-.3,0);arms[1].rotation.set(os.p,.3,0);
+function done(s){return wk&&(s<wk.s||(s===wk.s&&wk.u>=1.2));}
+for(var k=0;k<6;k++){var u2=wk&&wk.k===k?wk.u:-1,nx=wk&&done(k)?11-k:k;
+nz[k].position.y=u2>=0?nzY(u2):HOMEY;shut[k].position.z=tz[k]+5*(u2>=0?shF(u2):0);
+held[k].visible=u2>=.3&&u2<1.2;var rv=u2>=0&&rev(wk.s);setMk(held[k],rv?-1:1);rot[k].rotation.y=rv?Math.PI*ease(cl((u2-.55)/.15)):0;
+tq[k][0].visible=!(u2>=.3);setMk(tq[k][0],rev(nx)?-1:1);
+var lm=lamp[k];if(u2>=0&&u2<.8){var c=rv?0xFF3B30:0x2EE86A;lm.color.setHex(c);lm.emissive.setHex(c);}else{lm.color.setHex(0x888888);lm.emissive.setHex(0x222222);}}
+var sig=phase+'|'+pj+'|'+flips+'|'+ot;if(sig!==lastSig){lastSig=sig;stat.textContent='Plate '+(pj+1)+'/'+NP+' – '+phase+' | Dibalik: '+flips+' (nol lolos ke plate) | Operator: '+(ot||'standby');}}
+var man=false,M={k:0,ny:HOMEY,rt:0,sh:0,held:false,hrev:false,n:0,pl:[],cx:tg[0].x,cz:tg[0].z};
+function $(i){return document.getElementById(i);}
+function msg(t,bad){var e=$('mM');e.textContent=t;e.style.color=bad?'#d9342b':'';}
+function manualApply(){var k=M.k,p=PL[0],nr=M.n%3===2;PL[1].g.visible=false;p.g.visible=true;p.g.rotation.y=0;p.g.position.set(M.cx,PY,M.cz);
+zb.position.z=M.cz;sl.position.set(M.cx,7,M.cz);ne.position.set(M.cx,8.7,M.cz);
+for(var m=0;m<12;m++)p.f[m].visible=!!M.pl[m];
+for(var i=0;i<6;i++){var sel=i===k;nz[i].position.y=sel?M.ny:HOMEY;shut[i].position.z=tz[i]+(sel?5*M.sh:0);
+held[i].visible=sel&&M.held;rot[i].rotation.y=sel&&M.rt?Math.PI:0;if(sel)setMk(held[i],M.hrev?-1:1);
+tq[i][0].visible=!(sel&&(M.held||M.sh));setMk(tq[i][0],nr?-1:1);
+var c=nr?0xFF3B30:0x2EE86A;lamp[i].color.setHex(c);lamp[i].emissive.setHex(c);}
+var s=opS(-1);opG.position.set(s.x,-47,OZ);opG.rotation.y=s.r;arms[0].rotation.set(s.p,-.3,0);arms[1].rotation.set(s.p,.3,0);}
+$('mK').onchange=function(){if(M.held||M.ny<HOMEY-.5||M.sh){this.value=M.k;msg('Kembalikan nozzle ke home, lepas fuse, tutup shutter dulu',1);return;}M.k=+this.value;M.rt=0;msg('Nozzle F'+(M.k+1)+' aktif');};
+function guard(el){if(M.ny<YL-.5){el.value=el.id==='mZ'?M.cz:M.cx;msg('Interlock: angkat nozzle ke tinggi aman (≥36) sebelum menggerakkan plate',1);return false;}return true;}
+$('mZ').oninput=function(){if(guard(this))M.cz=+this.value;};$('mX').oninput=function(){if(guard(this))M.cx=+this.value;};
+$('mH').oninput=function(){var v=+this.value;if(!M.sh&&v<PICKY){v=PICKY;this.value=v;msg('Shutter tertutup: buka shutter agar nozzle bisa turun',1);}M.ny=v;};
+$('mG').onclick=function(){var k=M.k;
+if(!M.held){if(M.ny<=PICKY+1&&!M.sh){M.held=true;M.hrev=M.n%3===2;M.n++;msg('Fuse '+T[k].n+' diambil. Sensor: '+(M.hrev?'TERBALIK (merah), putar 180° sebelum dilepas':'orientasi OK (hijau)'));}else msg('Gripper hanya mengambil di posisi ambil dengan shutter tertutup',1);}
+else if(M.ny<=PICKY+1&&!M.sh){M.held=false;M.n--;msg('Fuse dikembalikan ke track');}
+else if(M.ny<=PLY+1.5){var eff=M.hrev!==!!M.rt,f=-1;for(var s=0;s<12;s++)if(tg[s].k===k&&!M.pl[s]&&Math.abs(M.cx+lx[k]-pX[k])<1.5&&Math.abs(M.cz+(tg[s].r?6:-6)-tz[k])<1.5)f=s;
+if(f<0)msg('Slot tidak sejajar atau sudah terisi: geser plate dulu',1);
+else if(eff)msg('TERBALIK! Pelepasan diblokir (interlock). Putar nozzle 180°',1);
+else{M.pl[f]=1;M.held=false;var c=M.pl.filter(Boolean).length;msg('Fuse terpasang di slot '+(f+1)+' ('+c+'/12)'+(c===12?', plate penuh, siap keluar':''));}}
+else{M.held=false;msg('Fuse jatuh! Lepas hanya saat nozzle di posisi plate',1);}
+this.textContent='Gripper: '+(M.held?'tutup':'buka');};
+$('mR').onclick=function(){if(M.ny<YL-.5){msg('Angkat nozzle dulu sebelum memutar',1);return;}M.rt^=1;msg('Nozzle diputar '+(M.rt?'180°':'0°'));};
+$('mS').onclick=function(){if(M.sh&&M.ny<YL-.5){msg('Nozzle masih di bawah shutter: angkat dulu',1);return;}M.sh^=1;this.textContent='Shutter: '+(M.sh?'buka':'tutup');};
+$('mA').onclick=function(){if(M.ny<YL-.5){msg('Angkat nozzle dulu',1);return;}for(var s=0;s<12;s++)if(tg[s].k===M.k&&!M.pl[s]){M.cx=tg[s].x;M.cz=tg[s].z;$('mX').value=M.cx;$('mZ').value=M.cz;msg('Plate disejajarkan ke slot '+(s+1));return;}msg('Semua slot tipe ini sudah terisi');};
+$('mReset').onclick=function(){M.pl=[];M.held=false;M.n=0;M.rt=0;M.sh=0;M.ny=HOMEY;$('mH').value=HOMEY;$('mG').textContent='Gripper: buka';$('mS').textContent='Shutter: tutup';msg('Plate direset');};
+$('mX').value=M.cx;$('mZ').value=M.cz;
+$('bM').onclick=function(){man=!man;this.textContent='Mode: '+(man?'Manual':'Otomatis');$('man').style.display=man?'block':'none';};
+$('aT').max=TEND;$('aT').oninput=function(){on=false;tog('bA',false);tA=+this.value;};
+function stepSlot(d){on=false;tog('bA',false);var j=Math.min(NP-1,Math.floor(tA/CYC)),s=Math.floor((tA-j*CYC-4)/D),ns=Math.max(0,s+d);tA=ns>=12?Math.min(TEND,(j+1)*CYC):j*CYC+4+ns*D+.01;}
+$('bPv').onclick=function(){stepSlot(-1);};$('bNx').onclick=function(){stepSlot(1);};
+var th=.75,ph=1,rd=520,tgt=new THREE.Vector3(-20,15,0),drag=false,lx0=0,ly0=0,pts={},pinch=0,auto=false;
+function upCam(){cam.position.set(tgt.x+rd*Math.sin(ph)*Math.sin(th),tgt.y+rd*Math.cos(ph),tgt.z+rd*Math.sin(ph)*Math.cos(th));cam.lookAt(tgt);}
+cv.addEventListener('pointerdown',function(e){pts[e.pointerId]=[e.clientX,e.clientY];drag=true;lx0=e.clientX;ly0=e.clientY;try{cv.setPointerCapture(e.pointerId);}catch(x){}});
+function up(e){delete pts[e.pointerId];if(!Object.keys(pts).length)drag=false;pinch=0;}
+cv.addEventListener('pointerup',up);cv.addEventListener('pointercancel',up);
+cv.addEventListener('pointermove',function(e){if(pts[e.pointerId])pts[e.pointerId]=[e.clientX,e.clientY];var ids=Object.keys(pts);
+if(ids.length>=2){var a=pts[ids[0]],b=pts[ids[1]],d=Math.hypot(a[0]-b[0],a[1]-b[1]);if(pinch)rd=Math.min(700,Math.max(60,rd*pinch/d));pinch=d;return;}
+if(drag){th-=(e.clientX-lx0)*.008;ph=Math.min(1.55,Math.max(.1,ph-(e.clientY-ly0)*.008));lx0=e.clientX;ly0=e.clientY;return;}hover(e);});
+cv.addEventListener('wheel',function(e){e.preventDefault();rd=Math.min(700,Math.max(60,rd*(1+e.deltaY*.001)));},{passive:false});
+var ray=new THREE.Raycaster(),mv=new THREE.Vector2();
+function vis(o){while(o){if(!o.visible)return false;o=o.parent;}return true;}
+function hover(e){var r=cv.getBoundingClientRect();mv.set(((e.clientX-r.left)/r.width)*2-1,-((e.clientY-r.top)/r.height)*2+1);ray.setFromCamera(mv,cam);
+var h=ray.intersectObjects(P,false),t=DEF;for(var i=0;i<h.length;i++){if(vis(h[i].object)){t=h[i].object.userData.label;break;}}info.textContent=t;}
+cv.addEventListener('pointerleave',function(){info.textContent=DEF;});
+function tog(id,v){document.getElementById(id).classList.toggle('on',v);}
+document.getElementById('bA').onclick=function(){on=!on;tog('bA',on);};
+document.getElementById('bS').onclick=function(){si=(si+1)%3;this.textContent='Kecepatan x'+sp[si];};
+document.getElementById('bR').onclick=function(){auto=!auto;tog('bR',auto);};
+function view(a,b,r,x,y,z){th=a;ph=b;rd=r;tgt.set(x,y,z);}
+document.getElementById('bI').onclick=function(){view(.75,1,520,-20,15,0);};
+document.getElementById('bT').onclick=function(){view(0,.12,560,-20,0,0);};
+document.getElementById('bN').onclick=function(){view(-.5,.9,170,-47,30,-5);};
+document.getElementById('bP').onclick=function(){view(.6,1,260,-35,10,0);};
+document.getElementById('bO').onclick=function(){view(-.6,1.1,240,125,-5,-70);};
+var last=performance.now(),cw=0,chh=0;
+function loop(now){var dt=Math.min(.05,(now-last)/1000);last=now;if(on&&!man){tA+=dt*sp[si];if(tA>TEND+1.5)tA=0;}
+if(man)manualApply();else{apply(Math.min(tA,TEND));$('aT').value=Math.min(tA,TEND);}if(auto&&!drag)th+=dt*.25;
+var w=cv.clientWidth,h=cv.clientHeight;if(w!==cw||h!==chh){cw=w;chh=h;R.setSize(w,h,false);cam.aspect=w/h;cam.updateProjectionMatrix();}
+upCam();R.render(S,cam);requestAnimationFrame(loop);}
+requestAnimationFrame(loop);
+})();
+</script></body></html>
